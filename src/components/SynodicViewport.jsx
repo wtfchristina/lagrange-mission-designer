@@ -1,46 +1,40 @@
 import React, { useMemo, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import CelestialBodies from './CelestialBodies';
 
-// 3D Bent Spacetime Metric Sheet (Gravitational Wells + Lagrange Saddles)
+// 3D Bent Spacetime Metric Sheet (Subtle Deep-Space Curvature Fabric)
 function SpacetimeCurvatureGrid({ system }) {
   const meshRef = useRef();
   const mu = system.mu;
 
-  const { geometry, colors } = useMemo(() => {
-    const res = 140; // High resolution grid
-    const size = 3.6 * 5; // Span full synodic domain
+  const { geometry } = useMemo(() => {
+    const res = 140;
+    const size = 3.6 * 5;
     const geom = new THREE.PlaneGeometry(size, size, res, res);
     const pos = geom.attributes.position;
     const colArray = new Float32Array(pos.count * 3);
 
-    // Color gradient palette for spacetime tension
-    const cFlat = new THREE.Color('#030712');   // Unbent asymptotic flat space
-    const cMid = new THREE.Color('#1e3a8a');    // Moderate synodic curvature
-    const cSaddle = new THREE.Color('#0284c7'); // L1/L2 saddle neck tension
-    const cWell = new THREE.Color('#38bdf8');   // Deep relativistic well throat
+    // Deep cosmic palette: dark void -> deep midnight navy -> subtle cyan throat
+    const cFlat = new THREE.Color('#020617');   // Asymptotic flat space void
+    const cMid = new THREE.Color('#0f172a');    // Intermediate synodic curvature
+    const cSaddle = new THREE.Color('#0369a1'); // Muted tension around L1/L2 saddles
+    const cWell = new THREE.Color('#38bdf8');   // Throat glow at gravity singularities
 
     for (let i = 0; i < pos.count; i++) {
-      // Unscale to dimensionless synodic coordinates
       const x = pos.getX(i) / 5;
       const y = pos.getY(i) / 5;
 
       const r1 = Math.sqrt((x + mu) ** 2 + y ** 2) + 0.035;
       const r2 = Math.sqrt((x - 1 + mu) ** 2 + y ** 2) + 0.018;
 
-      // Gravitational potential well + synodic centrifugal curvature
       const gravWell = (1 - mu) / r1 + mu / r2;
       const centrifugal = 0.5 * (x ** 2 + y ** 2);
       
-      // Total potential dip: clamped to create smooth deep funnels beneath bodies
       const depth = -Math.min(gravWell * 0.38 - centrifugal * 0.12, 3.8);
-
-      // Set z displacement (scaled by 5 to match scene)
       pos.setZ(i, depth);
 
-      // Color mapping according to local spacetime curvature / gradient
       const curvatureIntensity = Math.min(Math.abs(depth) / 3.0, 1.0);
       let vertexColor;
       if (curvatureIntensity < 0.25) {
@@ -63,26 +57,26 @@ function SpacetimeCurvatureGrid({ system }) {
 
   return (
     <group position={[0, 0, -0.2]}>
-      {/* Curved Spacetime Surface with Depth Shading */}
+      {/* Subdued Spacetime Sheet */}
       <mesh ref={meshRef} geometry={geometry}>
         <meshStandardMaterial
           vertexColors={true}
-          roughness={0.4}
-          metalness={0.3}
+          roughness={0.7}
+          metalness={0.1}
           wireframe={false}
           transparent={true}
-          opacity={0.82}
+          opacity={0.32}
           side={THREE.DoubleSide}
         />
       </mesh>
 
-      {/* Luminous Coordinate Grid Overlay showing tensor line deformation */}
+      {/* Delicate Coordinate Wireframe Lines */}
       <mesh geometry={geometry} position={[0, 0, 0.005]}>
         <meshBasicMaterial
-          color="#38bdf8"
+          color="#0ea5e9"
           wireframe={true}
           transparent={true}
-          opacity={0.22}
+          opacity={0.08}
         />
       </mesh>
     </group>
@@ -153,24 +147,24 @@ export default function SynodicViewport({
         {/* Textured Earth, Drifting Clouds, Moon & Starfield */}
         <CelestialBodies system={system} />
 
-        {/* BENT SPACETIME METRIC SHEET (Gravitational Wells + Saddle Necks) */}
+        {/* BENT SPACETIME METRIC SHEET (Subdued Luminance) */}
         <SpacetimeCurvatureGrid system={system} />
 
-        {/* Poincaré Section Visual Cutting Plane (y = 0) */}
+        {/* Poincaré Section Visual Plane (y = 0) */}
         {showPoincarePlane && (
           <mesh rotation={[Math.PI / 2, 0, 0]} position={[2.5, 0, 0]}>
             <planeGeometry args={[14, 6]} />
             <meshBasicMaterial
               color="#38bdf8"
               transparent={true}
-              opacity={0.04}
+              opacity={0.03}
               side={THREE.DoubleSide}
               depthWrite={false}
             />
           </mesh>
         )}
 
-        {/* Lagrange Points */}
+        {/* Lagrange Libration Points */}
         {lagrangePoints && (
           <>
             <LagrangeMarker position={[lagrangePoints.L1.x, lagrangePoints.L1.y, 0]} label="L1" color="#facc15" />
