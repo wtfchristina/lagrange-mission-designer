@@ -1,5 +1,9 @@
 # CR3BP Astrodynamics Laboratory: Invariant Manifolds & Differential Correction
 
+<p align="center">
+  <img src="public/hero.png" alt="CR3BP Astrodynamics Laboratory" width="100%" style="border-radius: 8px;" />
+</p>
+
 [![Vercel Deployment](https://img.shields.io/badge/Deployment-Live%20Demo-blue?style=for-the-badge&logo=vercel)](https://lagrange-mission-designer.vercel.app)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald?style=for-the-badge)](LICENSE)
 [![WebGL](https://img.shields.io/badge/WebGL-Three.js%20%2F%20React%20Three%20Fiber-purple?style=for-the-badge&logo=three.js)](https://threejs.org/)
