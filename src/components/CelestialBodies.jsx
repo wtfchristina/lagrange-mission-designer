@@ -2,93 +2,139 @@ import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-// Custom Fresnel Atmospheric Shader for planetary rim lighting
-const AtmosphereShader = {
-  vertexShader: `
-    varying vec3 vNormal;
-    varying vec3 vPosition;
-    void main() {
-      vNormal = normalize(normalMatrix * normal);
-      vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    uniform vec3 color;
-    varying vec3 vNormal;
-    varying vec3 vPosition;
-    void main() {
-      vec3 viewDir = normalize(-vPosition);
-      float intensity = pow(0.65 - dot(vNormal, viewDir), 2.2);
-      gl_FragColor = vec4(color, clamp(intensity * 1.8, 0.0, 1.0));
-    }
-  `
-};
+// Procedural high-res Earth texture generator (no CORS, no external network lag)
+function createProceduralEarthTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
 
-// Deep Space Starfield Component with Stellar Color Temperatures
-function DeepSpaceStars({ count = 3500 }) {
-  const pointsRef = useRef();
+  // Deep space ocean gradient
+  const oceanGrad = ctx.createLinearGradient(0, 0, 0, 512);
+  oceanGrad.addColorStop(0, '#0c2d48');
+  oceanGrad.addColorStop(0.5, '#145da0');
+  oceanGrad.addColorStop(1, '#0c2d48');
+  ctx.fillStyle = oceanGrad;
+  ctx.fillRect(0, 0, 1024, 512);
+
+  // Procedural continental landmasses
+  ctx.fillStyle = '#2e6f40';
+  const drawLandmass = (cx, cy, rx, ry, angle) => {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  };
+
+  // Americas
+  drawLandmass(280, 180, 80, 110, -0.2);
+  drawLandmass(340, 340, 60, 120, 0.4);
+  // Eurasia & Africa
+  drawLandmass(580, 170, 130, 90, 0.1);
+  drawLandmass(570, 300, 75, 100, -0.1);
+  // Australia
+  drawLandmass(820, 360, 45, 35, 0.2);
+
+  // Mountain ridges / terrain accents
+  ctx.fillStyle = '#8d7b68';
+  drawLandmass(260, 170, 20, 90, -0.3);
+  drawLandmass(620, 180, 90, 25, 0.1);
+
+  // Polar ice caps
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, 1024, 28);
+  ctx.fillRect(0, 484, 1024, 28);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  return texture;
+}
+
+// Procedural cloud cover texture
+function createProceduralCloudsTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+  ctx.fillRect(0, 0, 1024, 512);
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+  for (let i = 0; i < 40; i++) {
+    const x = Math.random() * 1024;
+    const y = 80 + Math.random() * 350;
+    const w = 60 + Math.random() * 140;
+    const h = 15 + Math.random() * 35;
+    ctx.beginPath();
+    ctx.ellipse(x, y, w, h, (Math.random() - 0.5) * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  return texture;
+}
+
+// Astronomical Starfield
+function Starfield({ count = 2500 }) {
+  const starsRef = useRef();
 
   const [positions, colors] = useMemo(() => {
     const pos = new Float32Array(count * 3);
     const col = new Float32Array(count * 3);
 
-    // Stellar spectral classification colors
-    const starPalette = [
-      new THREE.Color('#93c5fd'), // O/B: Blue Giant
-      new THREE.Color('#e0f2fe'), // A: Bluish-white
-      new THREE.Color('#ffffff'), // F: Pure White
-      new THREE.Color('#fef08a'), // G: Yellow (Sun-like)
-      new THREE.Color('#fdba74'), // K: Orange
-      new THREE.Color('#fca5a5')  // M: Red Dwarf
+    const palette = [
+      new THREE.Color('#38bdf8'), // O/B blue
+      new THREE.Color('#ffffff'), // White
+      new THREE.Color('#fef08a'), // Yellow
+      new THREE.Color('#fb923c'), // Amber
+      new THREE.Color('#cbd5e1')  // Soft silver
     ];
 
     for (let i = 0; i < count; i++) {
-      // Uniform spherical shell distribution at large orbital radius
-      const r = 25.0 + Math.random() * 45.0;
-      const theta = 2.0 * Math.PI * Math.random();
-      const phi = Math.acos(2.0 * Math.random() - 1.0);
+      // Keep stars within visible camera frustum (r: 6 to 18)
+      const r = 7.0 + Math.random() * 12.0;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
 
-      pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      // Centered near the barycenter of the Earth-Moon system (x ~ 0.5)
+      pos[i * 3] = 0.5 + r * Math.sin(phi) * Math.cos(theta);
       pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
       pos[i * 3 + 2] = r * Math.cos(phi);
 
-      const picked = starPalette[Math.floor(Math.random() * starPalette.length)];
-      // Slight brightness variation
-      const luminance = 0.5 + Math.random() * 0.5;
-      col[i * 3] = picked.r * luminance;
-      col[i * 3 + 1] = picked.g * luminance;
-      col[i * 3 + 2] = picked.b * luminance;
+      const color = palette[Math.floor(Math.random() * palette.length)];
+      const lum = 0.5 + Math.random() * 0.5;
+      col[i * 3] = color.r * lum;
+      col[i * 3 + 1] = color.g * lum;
+      col[i * 3 + 2] = color.b * lum;
     }
 
     return [pos, col];
   }, [count]);
 
-  // Slow galactic orientation drift
   useFrame((_, delta) => {
-    if (pointsRef.current) {
-      pointsRef.current.rotation.y += delta * 0.002;
+    if (starsRef.current) {
+      starsRef.current.rotation.y += delta * 0.003;
     }
   });
 
   return (
-    <points ref={pointsRef}>
+    <points ref={starsRef}>
       <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          args={[positions, 3]}
-        />
-        <bufferAttribute
-          attach="attributes-color"
-          args={[colors, 3]}
-        />
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute attach="attributes-color" args={[colors, 3]} />
       </bufferGeometry>
       <pointsMaterial
-        size={0.12}
+        size={1.6}
+        sizeAttenuation={false}
         vertexColors={true}
         transparent={true}
-        opacity={0.88}
-        sizeAttenuation={true}
+        opacity={0.9}
         depthWrite={false}
       />
     </points>
@@ -96,9 +142,9 @@ function DeepSpaceStars({ count = 3500 }) {
 }
 
 export default function CelestialBodies({ system }) {
-  const cloudRef = useRef();
   const earthRef = useRef();
-  const secondaryRef = useRef();
+  const cloudsRef = useRef();
+  const moonRef = useRef();
 
   const mu = system.mu;
   const isEarth = system.primaryName === 'Earth';
@@ -108,104 +154,104 @@ export default function CelestialBodies({ system }) {
   const primaryPos = [-mu, 0, 0];
   const secondaryPos = [1 - mu, 0, 0];
 
-  const primaryRadius = isSun ? 0.07 : isJupiter ? 0.055 : 0.045;
+  const primaryRadius = isSun ? 0.065 : isJupiter ? 0.055 : 0.045;
   const secondaryRadius = 0.018;
 
-  useFrame((_, delta) => {
-    if (cloudRef.current) cloudRef.current.rotation.y += delta * 0.06;
-    if (earthRef.current) earthRef.current.rotation.y += delta * 0.03;
-    if (secondaryRef.current) secondaryRef.current.rotation.y += delta * 0.02;
-  });
+  const earthTex = useMemo(() => createProceduralEarthTexture(), []);
+  const cloudsTex = useMemo(() => createProceduralCloudsTexture(), []);
 
-  const textureLoader = new THREE.TextureLoader();
-  const earthDayMap = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg');
-  const earthCloudsMap = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_clouds_1024.png');
-  const earthSpecular = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_specular_2048.jpg');
-  const earthNormal = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_normal_2048.jpg');
-  const moonMap = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg');
+  useFrame((_, delta) => {
+    if (earthRef.current) earthRef.current.rotation.y += delta * 0.04;
+    if (cloudsRef.current) cloudsRef.current.rotation.y += delta * 0.07;
+    if (moonRef.current) moonRef.current.rotation.y += delta * 0.02;
+  });
 
   return (
     <group>
-      {/* ================= 3D ASTRONOMICAL STARFIELD ================= */}
-      <DeepSpaceStars count={4000} />
+      {/* Autonomous Dedicated Lighting */}
+      <ambientLight intensity={1.2} />
+      <directionalLight position={[4, 6, 5]} intensity={2.2} />
+      <pointLight position={primaryPos} intensity={0.8} distance={3} color="#38bdf8" />
 
-      {/* ================= PRIMARY BODY ================= */}
+      {/* 3D Starfield */}
+      <Starfield count={2500} />
+
+      {/* PRIMARY BODY */}
       <group position={primaryPos}>
         {isEarth ? (
           <>
-            {/* Core Earth Sphere */}
+            {/* Earth Core with Continents & Oceans */}
             <mesh ref={earthRef}>
-              <sphereGeometry args={[primaryRadius, 64, 64]} />
+              <sphereGeometry args={[primaryRadius, 48, 48]} />
               <meshStandardMaterial
-                map={earthDayMap}
-                normalMap={earthNormal}
-                normalScale={new THREE.Vector2(0.85, 0.85)}
-                roughnessMap={earthSpecular}
+                map={earthTex}
                 roughness={0.4}
                 metalness={0.1}
+                emissive="#061e38"
+                emissiveIntensity={0.25}
               />
             </mesh>
 
-            {/* Dynamic Translucent Cloud Layer */}
-            <mesh ref={cloudRef}>
-              <sphereGeometry args={[primaryRadius * 1.018, 64, 64]} />
+            {/* Cloud Layer */}
+            <mesh ref={cloudsRef}>
+              <sphereGeometry args={[primaryRadius * 1.02, 48, 48]} />
               <meshStandardMaterial
-                map={earthCloudsMap}
+                map={cloudsTex}
                 transparent={true}
-                opacity={0.75}
+                opacity={0.65}
                 blending={THREE.AdditiveBlending}
                 depthWrite={false}
               />
             </mesh>
 
-            {/* Rayleigh Atmospheric Glow */}
+            {/* Atmospheric Cyan Rim Glow */}
             <mesh>
-              <sphereGeometry args={[primaryRadius * 1.15, 64, 64]} />
-              <shaderMaterial
-                vertexShader={AtmosphereShader.vertexShader}
-                fragmentShader={AtmosphereShader.fragmentShader}
-                uniforms={{ color: { value: new THREE.Color(0x38bdf8) } }}
+              <sphereGeometry args={[primaryRadius * 1.12, 32, 32]} />
+              <meshBasicMaterial
+                color="#38bdf8"
                 transparent={true}
-                blending={THREE.AdditiveBlending}
+                opacity={0.16}
                 side={THREE.BackSide}
+                blending={THREE.AdditiveBlending}
               />
             </mesh>
           </>
         ) : isJupiter ? (
           <mesh ref={earthRef}>
-            <sphereGeometry args={[primaryRadius, 64, 64]} />
-            <meshStandardMaterial color="#c28c5a" roughness={0.7} />
+            <sphereGeometry args={[primaryRadius, 48, 48]} />
+            <meshStandardMaterial color="#c28c5a" roughness={0.6} />
           </mesh>
         ) : (
           <mesh>
-            <sphereGeometry args={[primaryRadius, 64, 64]} />
-            <meshBasicMaterial color="#fef08a" />
+            <sphereGeometry args={[primaryRadius, 48, 48]} />
+            <meshBasicMaterial color="#fde047" />
           </mesh>
         )}
 
-        {/* Primary Barycentric Anchor Ring */}
+        {/* Primary Barycentric Target Ring */}
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[primaryRadius * 1.3, primaryRadius * 1.34, 48]} />
-          <meshBasicMaterial color="#38bdf8" transparent={true} opacity={0.3} side={THREE.DoubleSide} />
+          <ringGeometry args={[primaryRadius * 1.35, primaryRadius * 1.4, 48]} />
+          <meshBasicMaterial color="#38bdf8" transparent={true} opacity={0.4} side={THREE.DoubleSide} />
         </mesh>
       </group>
 
-      {/* ================= SECONDARY BODY ================= */}
+      {/* SECONDARY BODY (MOON / EUROPA) */}
       <group position={secondaryPos}>
-        <mesh ref={secondaryRef}>
+        <mesh ref={moonRef}>
           <sphereGeometry args={[secondaryRadius, 32, 32]} />
           <meshStandardMaterial
-            map={isEarth ? moonMap : null}
-            color={isEarth ? '#e2e8f0' : '#cbd5e1'}
+            color="#e2e8f0"
             roughness={0.8}
             metalness={0.05}
+            emissive="#1e293b"
+            emissiveIntensity={0.2}
           />
         </mesh>
 
-        {/* Secondary Sub-orbital Orbit Ring Indicator */}
+        {/* Secondary Sub-orbital Orbit Ring */}
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[secondaryRadius * 1.4, secondaryRadius * 1.45, 36]} />
-          <meshBasicMaterial color="#94a3b8" transparent={true} opacity={0.35} side={THREE.DoubleSide} />
+          <ringGeometry args={[secondaryRadius * 1.45, secondaryRadius * 1.5, 36]} />
+          <meshBasicMaterial color="#94a3b8" transparent={true} opacity={0.45} side={THREE.DoubleSide} />
         </mesh>
       </group>
     </group>
