@@ -26,6 +26,59 @@ export default function App() {
   const [showPoincare, setShowPoincare] = useState(true);
   const [isTheoryOpen, setIsTheoryOpen] = useState(false);
 
+  const [isRecording, setIsRecording] = useState(false);
+  const [countdown, setCountdown] = useState(10);
+
+  const handleRecordShowcase = () => {
+    const canvas = document.querySelector("canvas");
+    if (!canvas || isRecording) return;
+
+    const stream = canvas.captureStream(60);
+    const mimeType = MediaRecorder.isTypeSupported("video/mp4;codecs=avc1")
+      ? "video/mp4;codecs=avc1"
+      : MediaRecorder.isTypeSupported("video/mp4")
+      ? "video/mp4"
+      : "video/webm;codecs=vp9";
+
+    const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+    const recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 12000000
+    });
+
+    const chunks = [];
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cr3bp_manifold_showcase_10s.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setIsRecording(false);
+    };
+
+    setIsRecording(true);
+    setCountdown(10);
+    recorder.start();
+
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    setTimeout(() => {
+      recorder.stop();
+    }, 10000);
+  };
+  
+
   const system = CELESTIAL_SYSTEMS[systemKey];
   const lagrangePoints = useMemo(() => calculateLagrangePoints(system.mu), [system.mu]);
 
@@ -196,6 +249,9 @@ export default function App() {
         onSeedTrajectory={seedFromPoincare}
         onExportCSV={handleExportCSV}
         onExportJSON={handleExportJSON}
+        isRecording={isRecording}
+        countdown={countdown}
+        onRecordShowcase={handleRecordShowcase}
       />
       <TheoryModal
         isOpen={isTheoryOpen}

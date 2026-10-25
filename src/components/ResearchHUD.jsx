@@ -3,6 +3,9 @@ import { CELESTIAL_SYSTEMS } from '../logic/cr3bpEngine';
 import PoincareCanvas from './PoincareCanvas';
 
 export default function ResearchHUD({
+  isRecording,
+  countdown,
+  onRecordShowcase,
   systemKey,
   setSystemKey,
   lagrangePoints,
@@ -164,6 +167,27 @@ export default function ResearchHUD({
               EXPORT STATE (.JSON)
             </button>
           </div>
+          <div style={{ marginTop: "8px" }}>
+            <button
+              onClick={onRecordShowcase}
+              disabled={isRecording}
+              style={{
+                width: "100%",
+                padding: "7px",
+                fontSize: "10px",
+                fontWeight: "bold",
+                backgroundColor: isRecording ? "#ef4444" : "#1e1b4b",
+                color: isRecording ? "#ffffff" : "#c084fc",
+                border: isRecording ? "1px solid #ef4444" : "1px solid #c084fc",
+                borderRadius: "4px",
+                cursor: isRecording ? "not-allowed" : "pointer",
+                transition: "all 0.2s ease"
+              }}
+            >
+              {isRecording ? `● RECORDING CANVAS STREAM (${countdown}s)...` : "● RECORD 10s HD CLIP (MP4)"}
+            </button>
+          </div>
+  
         </div>
 
         {/* Right Column: Mission Presets + Clickable Poincaré Canvas */}
