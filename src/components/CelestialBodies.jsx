@@ -1,114 +1,213 @@
-import React, { useMemo } from 'react';
+import React, { useRef, useMemo } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-// Procedural Earth surface map
-function createEarthTexture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 1024;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d');
+// Custom Fresnel Atmospheric Shader for planetary rim lighting
+const AtmosphereShader = {
+  vertexShader: `
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 color;
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    void main() {
+      vec3 viewDir = normalize(-vPosition);
+      float intensity = pow(0.65 - dot(vNormal, viewDir), 2.2);
+      gl_FragColor = vec4(color, clamp(intensity * 1.8, 0.0, 1.0));
+    }
+  `
+};
 
-  ctx.fillStyle = '#0a2342';
-  ctx.fillRect(0, 0, 1024, 512);
+// Deep Space Starfield Component with Stellar Color Temperatures
+function DeepSpaceStars({ count = 3500 }) {
+  const pointsRef = useRef();
 
-  // Continents
-  ctx.fillStyle = '#1e3f20';
-  for (let i = 0; i < 48; i++) {
-    const x = Math.sin(i * 137.5) * 450 + 512;
-    const y = Math.cos(i * 93.3) * 180 + 256;
-    const r = (Math.sin(i * 12.3) + 1.8) * 35;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  const [positions, colors] = useMemo(() => {
+    const pos = new Float32Array(count * 3);
+    const col = new Float32Array(count * 3);
 
-  // Cloud layer swirls
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
-  for (let i = 0; i < 30; i++) {
-    const cx = (i * 38) % 1024;
-    const cy = 256 + Math.sin(i * 0.8) * 120;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, 70, 18, 0.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
+    // Stellar spectral classification colors
+    const starPalette = [
+      new THREE.Color('#93c5fd'), // O/B: Blue Giant
+      new THREE.Color('#e0f2fe'), // A: Bluish-white
+      new THREE.Color('#ffffff'), // F: Pure White
+      new THREE.Color('#fef08a'), // G: Yellow (Sun-like)
+      new THREE.Color('#fdba74'), // K: Orange
+      new THREE.Color('#fca5a5')  // M: Red Dwarf
+    ];
 
-  return new THREE.CanvasTexture(canvas);
-}
+    for (let i = 0; i < count; i++) {
+      // Uniform spherical shell distribution at large orbital radius
+      const r = 25.0 + Math.random() * 45.0;
+      const theta = 2.0 * Math.PI * Math.random();
+      const phi = Math.acos(2.0 * Math.random() - 1.0);
 
-// Procedural Moon crater surface map
-function createMoonTexture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
+      pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      pos[i * 3 + 2] = r * Math.cos(phi);
 
-  ctx.fillStyle = '#94a3b8';
-  ctx.fillRect(0, 0, 512, 256);
+      const picked = starPalette[Math.floor(Math.random() * starPalette.length)];
+      // Slight brightness variation
+      const luminance = 0.5 + Math.random() * 0.5;
+      col[i * 3] = picked.r * luminance;
+      col[i * 3 + 1] = picked.g * luminance;
+      col[i * 3 + 2] = picked.b * luminance;
+    }
 
-  // Maria basalt basins
-  ctx.fillStyle = '#475569';
-  for (let i = 0; i < 18; i++) {
-    const x = Math.sin(i * 47) * 200 + 256;
-    const y = Math.cos(i * 31) * 90 + 128;
-    ctx.beginPath();
-    ctx.arc(x, y, (Math.sin(i) + 1.2) * 25, 0, Math.PI * 2);
-    ctx.fill();
-  }
+    return [pos, col];
+  }, [count]);
 
-  return new THREE.CanvasTexture(canvas);
-}
-
-// Earth with Atmospheric Glow Shell
-export function RealisticPrimary({ position, radius = 0.28 }) {
-  const texture = useMemo(() => createEarthTexture(), []);
+  // Slow galactic orientation drift
+  useFrame((_, delta) => {
+    if (pointsRef.current) {
+      pointsRef.current.rotation.y += delta * 0.002;
+    }
+  });
 
   return (
-    <group position={position}>
-      {/* Surface */}
-      <mesh>
-        <sphereGeometry args={[radius, 32, 32]} />
-        <meshStandardMaterial map={texture} roughness={0.4} metalness={0.1} />
-      </mesh>
-      {/* Rayleigh Atmospheric Rim Glow */}
-      <mesh>
-        <sphereGeometry args={[radius * 1.15, 32, 32]} />
-        <meshBasicMaterial
-          color="#38bdf8"
-          transparent
-          opacity={0.18}
-          side={THREE.BackSide}
+    <points ref={pointsRef}>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          args={[positions, 3]}
         />
-      </mesh>
-    </group>
-  );
-}
-
-// Tidally-Locked Secondary Body
-export function RealisticSecondary({ position, radius = 0.12 }) {
-  const texture = useMemo(() => createMoonTexture(), []);
-
-  return (
-    <mesh position={position}>
-      <sphereGeometry args={[radius, 32, 32]} />
-      <meshStandardMaterial map={texture} roughness={0.8} metalness={0.05} />
-    </mesh>
-  );
-}
-
-// Synodic Reference Frame Rotation Vector (omega = +z)
-export function SynodicRotationVector({ position = [0, 0, 0] }) {
-  return (
-    <group position={position}>
-      <arrowHelper
-        args={[
-          new THREE.Vector3(0, 0, 1),
-          new THREE.Vector3(0, 0, 0),
-          1.8,
-          0x38bdf8,
-          0.25,
-          0.12
-        ]}
+        <bufferAttribute
+          attach="attributes-color"
+          args={[colors, 3]}
+        />
+      </bufferGeometry>
+      <pointsMaterial
+        size={0.12}
+        vertexColors={true}
+        transparent={true}
+        opacity={0.88}
+        sizeAttenuation={true}
+        depthWrite={false}
       />
+    </points>
+  );
+}
+
+export default function CelestialBodies({ system }) {
+  const cloudRef = useRef();
+  const earthRef = useRef();
+  const secondaryRef = useRef();
+
+  const mu = system.mu;
+  const isEarth = system.primaryName === 'Earth';
+  const isJupiter = system.primaryName === 'Jupiter';
+  const isSun = system.primaryName === 'Sun';
+
+  const primaryPos = [-mu, 0, 0];
+  const secondaryPos = [1 - mu, 0, 0];
+
+  const primaryRadius = isSun ? 0.07 : isJupiter ? 0.055 : 0.045;
+  const secondaryRadius = 0.018;
+
+  useFrame((_, delta) => {
+    if (cloudRef.current) cloudRef.current.rotation.y += delta * 0.06;
+    if (earthRef.current) earthRef.current.rotation.y += delta * 0.03;
+    if (secondaryRef.current) secondaryRef.current.rotation.y += delta * 0.02;
+  });
+
+  const textureLoader = new THREE.TextureLoader();
+  const earthDayMap = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg');
+  const earthCloudsMap = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_clouds_1024.png');
+  const earthSpecular = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_specular_2048.jpg');
+  const earthNormal = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_normal_2048.jpg');
+  const moonMap = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg');
+
+  return (
+    <group>
+      {/* ================= 3D ASTRONOMICAL STARFIELD ================= */}
+      <DeepSpaceStars count={4000} />
+
+      {/* ================= PRIMARY BODY ================= */}
+      <group position={primaryPos}>
+        {isEarth ? (
+          <>
+            {/* Core Earth Sphere */}
+            <mesh ref={earthRef}>
+              <sphereGeometry args={[primaryRadius, 64, 64]} />
+              <meshStandardMaterial
+                map={earthDayMap}
+                normalMap={earthNormal}
+                normalScale={new THREE.Vector2(0.85, 0.85)}
+                roughnessMap={earthSpecular}
+                roughness={0.4}
+                metalness={0.1}
+              />
+            </mesh>
+
+            {/* Dynamic Translucent Cloud Layer */}
+            <mesh ref={cloudRef}>
+              <sphereGeometry args={[primaryRadius * 1.018, 64, 64]} />
+              <meshStandardMaterial
+                map={earthCloudsMap}
+                transparent={true}
+                opacity={0.75}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Rayleigh Atmospheric Glow */}
+            <mesh>
+              <sphereGeometry args={[primaryRadius * 1.15, 64, 64]} />
+              <shaderMaterial
+                vertexShader={AtmosphereShader.vertexShader}
+                fragmentShader={AtmosphereShader.fragmentShader}
+                uniforms={{ color: { value: new THREE.Color(0x38bdf8) } }}
+                transparent={true}
+                blending={THREE.AdditiveBlending}
+                side={THREE.BackSide}
+              />
+            </mesh>
+          </>
+        ) : isJupiter ? (
+          <mesh ref={earthRef}>
+            <sphereGeometry args={[primaryRadius, 64, 64]} />
+            <meshStandardMaterial color="#c28c5a" roughness={0.7} />
+          </mesh>
+        ) : (
+          <mesh>
+            <sphereGeometry args={[primaryRadius, 64, 64]} />
+            <meshBasicMaterial color="#fef08a" />
+          </mesh>
+        )}
+
+        {/* Primary Barycentric Anchor Ring */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[primaryRadius * 1.3, primaryRadius * 1.34, 48]} />
+          <meshBasicMaterial color="#38bdf8" transparent={true} opacity={0.3} side={THREE.DoubleSide} />
+        </mesh>
+      </group>
+
+      {/* ================= SECONDARY BODY ================= */}
+      <group position={secondaryPos}>
+        <mesh ref={secondaryRef}>
+          <sphereGeometry args={[secondaryRadius, 32, 32]} />
+          <meshStandardMaterial
+            map={isEarth ? moonMap : null}
+            color={isEarth ? '#e2e8f0' : '#cbd5e1'}
+            roughness={0.8}
+            metalness={0.05}
+          />
+        </mesh>
+
+        {/* Secondary Sub-orbital Orbit Ring Indicator */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[secondaryRadius * 1.4, secondaryRadius * 1.45, 36]} />
+          <meshBasicMaterial color="#94a3b8" transparent={true} opacity={0.35} side={THREE.DoubleSide} />
+        </mesh>
+      </group>
     </group>
   );
 }
