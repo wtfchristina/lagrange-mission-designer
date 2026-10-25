@@ -2,67 +2,80 @@ import React, { useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Line } from '@react-three/drei';
 import * as THREE from 'three';
-import { calculatePotential } from '../logic/cr3bpEngine';
-import { RealisticPrimary, RealisticSecondary, SynodicRotationVector } from './CelestialBodies';
+import CelestialBodies from './CelestialBodies';
 
-function ZeroVelocityContours({ mu, targetCj }) {
-  const points = useMemo(() => {
-    const gridPoints = [];
-    const resolution = 55;
-    const size = 2.4;
-    const half = size / 2;
-    const step = size / resolution;
+function ZeroVelocitySurfaces({ system, targetCj }) {
+  const meshData = useMemo(() => {
+    const res = 48;
+    const size = 3.2 * 5; // scaled by 5 to match synodic viewport
+    const geom = new THREE.PlaneGeometry(size, size, res, res);
+    const pos = geom.attributes.position;
+    const mu = system.mu;
 
-    for (let x = -half; x <= half; x += step) {
-      for (let y = -half; y <= half; y += step) {
-        const cj = 2.0 * calculatePotential(x, y, 0, mu);
-        if (Math.abs(cj - targetCj) < 0.08) {
-          gridPoints.push(new THREE.Vector3(x * 5, y * 5, -0.05));
-        }
-      }
+    for (let i = 0; i < pos.count; i++) {
+      // Unscale to synodic coordinates for potential evaluation
+      const x = pos.getX(i) / 5;
+      const y = pos.getY(i) / 5;
+
+      const r1 = Math.sqrt((x + mu) ** 2 + y ** 2) + 1e-4;
+      const r2 = Math.sqrt((x - 1 + mu) ** 2 + y ** 2) + 1e-4;
+      const omega = 0.5 * (x ** 2 + y ** 2) + (1 - mu) / r1 + mu / r2;
+      const cj = 2 * omega;
+
+      // Displacement elevation based on Jacobi constant deficit
+      const diff = cj - targetCj;
+      pos.setZ(i, Math.sign(diff) * Math.min(Math.abs(diff) * 0.15, 0.4) * 5);
     }
-    return gridPoints;
-  }, [mu, targetCj]);
-
-  const positions = useMemo(() => {
-    const arr = new Float32Array(points.length * 3);
-    for (let i = 0; i < points.length; i++) {
-      arr[i * 3] = points[i].x;
-      arr[i * 3 + 1] = points[i].y;
-      arr[i * 3 + 2] = points[i].z;
-    }
-    return arr;
-  }, [points]);
+    geom.computeVertexNormals();
+    return geom;
+  }, [system.mu, targetCj]);
 
   return (
-    <points>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          count={points.length}
-          array={positions}
-          itemSize={3}
-        />
-      </bufferGeometry>
-      <pointsMaterial size={0.035} color="#38bdf8" transparent opacity={0.35} />
-    </points>
+    <mesh geometry={meshData}>
+      <meshStandardMaterial
+        color="#1e1b4b"
+        wireframe={true}
+        transparent={true}
+        opacity={0.12}
+      />
+    </mesh>
   );
 }
 
-function ManifoldTube({ filaments, color }) {
+function LagrangeMarker({ position, label, color = '#eab308' }) {
+  return (
+    <group position={[position[0] * 5, position[1] * 5, position[2] * 5]}>
+      {/* 3D Libration Axis Reticle */}
+      <mesh>
+        <sphereGeometry args={[0.04, 16, 16]} />
+        <meshBasicMaterial color={color} />
+      </mesh>
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.09, 0.11, 24]} />
+        <meshBasicMaterial color={color} transparent={true} opacity={0.6} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+function ManifoldFilaments({ filaments, color }) {
   if (!filaments || filaments.length === 0) return null;
   return (
     <group>
-      {filaments.map((f, idx) => (
-        <Line
-          key={idx}
-          points={f.map(p => [p[0] * 5, p[1] * 5, p[2] * 5])}
-          color={color}
-          lineWidth={1.2}
-          transparent
-          opacity={0.35}
-        />
-      ))}
+      {filaments.map((tube, idx) => {
+        const pts = tube.map(p => [p[0] * 5, p[1] * 5, p[2] * 5]);
+        if (pts.length < 2) return null;
+        return (
+          <Line
+            key={idx}
+            points={pts}
+            color={color}
+            lineWidth={0.8}
+            transparent={true}
+            opacity={0.35}
+          />
+        );
+      })}
     </group>
   );
 }
@@ -76,66 +89,75 @@ export default function SynodicViewport({
   manifoldTubes,
   showPoincarePlane
 }) {
-  const mu = system.mu;
-  const primaryPos = [-mu * 5, 0, 0];
-  const secondaryPos = [(1 - mu) * 5, 0, 0];
+  const haloPoints = useMemo(() => {
+    if (!haloOrbit || haloOrbit.length < 2) return null;
+    return haloOrbit.map(p => [p[0] * 5, p[1] * 5, p[2] * 5]);
+  }, [haloOrbit]);
+
+  const trajectoryPoints = useMemo(() => {
+    if (!trajectory || trajectory.length < 2) return null;
+    return trajectory.map(p => [p[0] * 5, p[1] * 5, p[2] * 5]);
+  }, [trajectory]);
 
   return (
-    <div style={{ width: '100%', height: '100%', backgroundColor: '#030712' }}>
-      <Canvas camera={{ position: [2, -6, 5], fov: 45 }}>
+    <div style={{ width: '100%', height: '100%', backgroundColor: '#020617' }}>
+      <Canvas camera={{ position: [2.5, -7.5, 6], fov: 45 }}>
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[10, -10, 8]} intensity={2.2} />
 
-        <gridHelper args={[24, 24, '#1e293b', '#0f172a']} rotation={[Math.PI / 2, 0, 0]} />
+        {/* Textured Earth, Atmospheric Shader, Moon & Deep Space Stars */}
+        <CelestialBodies system={system} />
 
-        {/* Realistic Earth & Moon */}
-        <RealisticPrimary position={primaryPos} radius={0.32} />
-        <RealisticSecondary position={secondaryPos} radius={0.14} />
+        {/* Zero-Velocity Surfaces (Hill Stability Region) */}
+        <ZeroVelocitySurfaces system={system} targetCj={selectedCj} />
 
-        {/* Synodic Rotation Vector (omega = +z) at Barycenter */}
-        <SynodicRotationVector position={[0, 0, 0]} />
-
-        {/* 5 Libration Points */}
-        {Object.entries(lagrangePoints).map(([key, lp]) => (
-          <group key={key} position={[lp.x * 5, lp.y * 5, 0]}>
-            <mesh>
-              <octahedronGeometry args={[0.08]} />
-              <meshBasicMaterial color="#eab308" wireframe />
-            </mesh>
-          </group>
-        ))}
-
-        {/* Poincaré Section Plane (y = 0) */}
+        {/* Poincaré Section Visual Cutting Plane (y = 0) */}
         {showPoincarePlane && (
-          <mesh position={[2, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[12, 6]} />
-            <meshBasicMaterial color="#38bdf8" transparent opacity={0.08} side={THREE.DoubleSide} />
+          <mesh rotation={[Math.PI / 2, 0, 0]} position={[2.5, 0, 0]}>
+            <planeGeometry args={[14, 6]} />
+            <meshBasicMaterial
+              color="#38bdf8"
+              transparent={true}
+              opacity={0.04}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
           </mesh>
         )}
 
-        <ZeroVelocityContours mu={mu} targetCj={selectedCj} />
+        {/* Libration Lagrange Points L1 - L5 */}
+        {lagrangePoints && (
+          <>
+            <LagrangeMarker position={[lagrangePoints.L1.x, lagrangePoints.L1.y, 0]} label="L1" color="#eab308" />
+            <LagrangeMarker position={[lagrangePoints.L2.x, lagrangePoints.L2.y, 0]} label="L2" color="#eab308" />
+            <LagrangeMarker position={[lagrangePoints.L3.x, lagrangePoints.L3.y, 0]} label="L3" color="#f97316" />
+            <LagrangeMarker position={[lagrangePoints.L4.x, lagrangePoints.L4.y, 0]} label="L4" color="#a855f7" />
+            <LagrangeMarker position={[lagrangePoints.L5.x, lagrangePoints.L5.y, 0]} label="L5" color="#a855f7" />
+          </>
+        )}
 
-        {haloOrbit && haloOrbit.length > 1 && (
+        {/* Corrected Periodic Halo Orbit */}
+        {haloPoints && (
           <Line
-            points={haloOrbit.map(p => [p[0] * 5, p[1] * 5, p[2] * 5])}
+            points={haloPoints}
             color="#fbbf24"
             lineWidth={3.0}
           />
         )}
 
+        {/* Manifold Tube Bundles (Unstable W^u & Stable W^s) */}
         {manifoldTubes && (
           <>
-            <ManifoldTube filaments={manifoldTubes.unstableTube} color="#f43f5e" />
-            <ManifoldTube filaments={manifoldTubes.stableTube} color="#06b6d4" />
+            <ManifoldFilaments filaments={manifoldTubes.unstableTube} color="#f43f5e" />
+            <ManifoldFilaments filaments={manifoldTubes.stableTube} color="#06b6d4" />
           </>
         )}
 
-        {trajectory.length > 1 && (
+        {/* Real-Time Spacecraft Trajectory Line */}
+        {trajectoryPoints && (
           <Line
-            points={trajectory.map(p => [p[0] * 5, p[1] * 5, p[2] * 5])}
+            points={trajectoryPoints}
             color="#22c55e"
-            lineWidth={2.2}
+            lineWidth={2.4}
           />
         )}
       </Canvas>
