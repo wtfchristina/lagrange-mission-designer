@@ -7,13 +7,12 @@ import CelestialBodies from './CelestialBodies';
 function ZeroVelocitySurfaces({ system, targetCj }) {
   const meshData = useMemo(() => {
     const res = 48;
-    const size = 3.2 * 5; // scaled by 5 to match synodic viewport
+    const size = 3.2 * 5;
     const geom = new THREE.PlaneGeometry(size, size, res, res);
     const pos = geom.attributes.position;
     const mu = system.mu;
 
     for (let i = 0; i < pos.count; i++) {
-      // Unscale to synodic coordinates for potential evaluation
       const x = pos.getX(i) / 5;
       const y = pos.getY(i) / 5;
 
@@ -22,7 +21,6 @@ function ZeroVelocitySurfaces({ system, targetCj }) {
       const omega = 0.5 * (x ** 2 + y ** 2) + (1 - mu) / r1 + mu / r2;
       const cj = 2 * omega;
 
-      // Displacement elevation based on Jacobi constant deficit
       const diff = cj - targetCj;
       pos.setZ(i, Math.sign(diff) * Math.min(Math.abs(diff) * 0.15, 0.4) * 5);
     }
@@ -45,19 +43,19 @@ function ZeroVelocitySurfaces({ system, targetCj }) {
 function LagrangeMarker({ position, label, color = '#eab308' }) {
   return (
     <group position={[position[0] * 5, position[1] * 5, position[2] * 5]}>
-      {/* 3D Libration Axis Reticle */}
       <mesh>
-        <sphereGeometry args={[0.04, 16, 16]} />
+        <sphereGeometry args={[0.045, 16, 16]} />
         <meshBasicMaterial color={color} />
       </mesh>
       <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.09, 0.11, 24]} />
-        <meshBasicMaterial color={color} transparent={true} opacity={0.6} side={THREE.DoubleSide} />
+        <ringGeometry args={[0.09, 0.12, 24]} />
+        <meshBasicMaterial color={color} transparent={true} opacity={0.65} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );
 }
 
+// Enhanced High-Visibility Manifold Filaments
 function ManifoldFilaments({ filaments, color }) {
   if (!filaments || filaments.length === 0) return null;
   return (
@@ -70,9 +68,9 @@ function ManifoldFilaments({ filaments, color }) {
             key={idx}
             points={pts}
             color={color}
-            lineWidth={0.8}
+            lineWidth={1.7}
             transparent={true}
-            opacity={0.35}
+            opacity={0.78}
           />
         );
       })}
@@ -104,34 +102,34 @@ export default function SynodicViewport({
       <Canvas camera={{ position: [2.5, -7.5, 6], fov: 45 }}>
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
 
-        {/* Textured Earth, Atmospheric Shader, Moon & Deep Space Stars */}
+        {/* Textured Earth, Clouds, Moon & Starfield */}
         <CelestialBodies system={system} />
 
-        {/* Zero-Velocity Surfaces (Hill Stability Region) */}
+        {/* Zero-Velocity Surfaces */}
         <ZeroVelocitySurfaces system={system} targetCj={selectedCj} />
 
-        {/* Poincaré Section Visual Cutting Plane (y = 0) */}
+        {/* Poincaré Section Plane (y = 0) */}
         {showPoincarePlane && (
           <mesh rotation={[Math.PI / 2, 0, 0]} position={[2.5, 0, 0]}>
             <planeGeometry args={[14, 6]} />
             <meshBasicMaterial
               color="#38bdf8"
               transparent={true}
-              opacity={0.04}
+              opacity={0.05}
               side={THREE.DoubleSide}
               depthWrite={false}
             />
           </mesh>
         )}
 
-        {/* Libration Lagrange Points L1 - L5 */}
+        {/* Lagrange Libration Points */}
         {lagrangePoints && (
           <>
-            <LagrangeMarker position={[lagrangePoints.L1.x, lagrangePoints.L1.y, 0]} label="L1" color="#eab308" />
-            <LagrangeMarker position={[lagrangePoints.L2.x, lagrangePoints.L2.y, 0]} label="L2" color="#eab308" />
-            <LagrangeMarker position={[lagrangePoints.L3.x, lagrangePoints.L3.y, 0]} label="L3" color="#f97316" />
-            <LagrangeMarker position={[lagrangePoints.L4.x, lagrangePoints.L4.y, 0]} label="L4" color="#a855f7" />
-            <LagrangeMarker position={[lagrangePoints.L5.x, lagrangePoints.L5.y, 0]} label="L5" color="#a855f7" />
+            <LagrangeMarker position={[lagrangePoints.L1.x, lagrangePoints.L1.y, 0]} label="L1" color="#facc15" />
+            <LagrangeMarker position={[lagrangePoints.L2.x, lagrangePoints.L2.y, 0]} label="L2" color="#facc15" />
+            <LagrangeMarker position={[lagrangePoints.L3.x, lagrangePoints.L3.y, 0]} label="L3" color="#fb923c" />
+            <LagrangeMarker position={[lagrangePoints.L4.x, lagrangePoints.L4.y, 0]} label="L4" color="#c084fc" />
+            <LagrangeMarker position={[lagrangePoints.L5.x, lagrangePoints.L5.y, 0]} label="L5" color="#c084fc" />
           </>
         )}
 
@@ -140,25 +138,36 @@ export default function SynodicViewport({
           <Line
             points={haloPoints}
             color="#fbbf24"
-            lineWidth={3.0}
+            lineWidth={3.4}
           />
         )}
 
-        {/* Manifold Tube Bundles (Unstable W^u & Stable W^s) */}
+        {/* High-Luminance Manifold Tubes (Unstable W^u: Rose Red | Stable W^s: Electric Cyan) */}
         {manifoldTubes && (
           <>
-            <ManifoldFilaments filaments={manifoldTubes.unstableTube} color="#f43f5e" />
-            <ManifoldFilaments filaments={manifoldTubes.stableTube} color="#06b6d4" />
+            <ManifoldFilaments filaments={manifoldTubes.unstableTube} color="#fb7185" />
+            <ManifoldFilaments filaments={manifoldTubes.stableTube} color="#22d3ee" />
           </>
         )}
 
-        {/* Real-Time Spacecraft Trajectory Line */}
+        {/* High-Intensity Spacecraft Trajectory Trail with Optical Bloom Sheath */}
         {trajectoryPoints && (
-          <Line
-            points={trajectoryPoints}
-            color="#22c55e"
-            lineWidth={2.4}
-          />
+          <>
+            {/* Outer Diffusion Glow Sheath */}
+            <Line
+              points={trajectoryPoints}
+              color="#4ade80"
+              lineWidth={5.5}
+              transparent={true}
+              opacity={0.35}
+            />
+            {/* Inner High-Intensity Laser Core */}
+            <Line
+              points={trajectoryPoints}
+              color="#86efac"
+              lineWidth={2.2}
+            />
+          </>
         )}
       </Canvas>
     </div>
