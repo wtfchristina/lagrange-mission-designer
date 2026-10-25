@@ -1,46 +1,95 @@
-import React, { useMemo } from 'react';
-import { Canvas } from '@react-three/fiber';
+import React, { useMemo, useRef } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import CelestialBodies from './CelestialBodies';
 
-function ZeroVelocitySurfaces({ system, targetCj }) {
-  const meshData = useMemo(() => {
-    const res = 48;
-    const size = 3.2 * 5;
+// 3D Bent Spacetime Metric Sheet (Gravitational Wells + Lagrange Saddles)
+function SpacetimeCurvatureGrid({ system }) {
+  const meshRef = useRef();
+  const mu = system.mu;
+
+  const { geometry, colors } = useMemo(() => {
+    const res = 140; // High resolution grid
+    const size = 3.6 * 5; // Span full synodic domain
     const geom = new THREE.PlaneGeometry(size, size, res, res);
     const pos = geom.attributes.position;
-    const mu = system.mu;
+    const colArray = new Float32Array(pos.count * 3);
+
+    // Color gradient palette for spacetime tension
+    const cFlat = new THREE.Color('#030712');   // Unbent asymptotic flat space
+    const cMid = new THREE.Color('#1e3a8a');    // Moderate synodic curvature
+    const cSaddle = new THREE.Color('#0284c7'); // L1/L2 saddle neck tension
+    const cWell = new THREE.Color('#38bdf8');   // Deep relativistic well throat
 
     for (let i = 0; i < pos.count; i++) {
+      // Unscale to dimensionless synodic coordinates
       const x = pos.getX(i) / 5;
       const y = pos.getY(i) / 5;
 
-      const r1 = Math.sqrt((x + mu) ** 2 + y ** 2) + 1e-4;
-      const r2 = Math.sqrt((x - 1 + mu) ** 2 + y ** 2) + 1e-4;
-      const omega = 0.5 * (x ** 2 + y ** 2) + (1 - mu) / r1 + mu / r2;
-      const cj = 2 * omega;
+      const r1 = Math.sqrt((x + mu) ** 2 + y ** 2) + 0.035;
+      const r2 = Math.sqrt((x - 1 + mu) ** 2 + y ** 2) + 0.018;
 
-      const diff = cj - targetCj;
-      pos.setZ(i, Math.sign(diff) * Math.min(Math.abs(diff) * 0.15, 0.4) * 5);
+      // Gravitational potential well + synodic centrifugal curvature
+      const gravWell = (1 - mu) / r1 + mu / r2;
+      const centrifugal = 0.5 * (x ** 2 + y ** 2);
+      
+      // Total potential dip: clamped to create smooth deep funnels beneath bodies
+      const depth = -Math.min(gravWell * 0.38 - centrifugal * 0.12, 3.8);
+
+      // Set z displacement (scaled by 5 to match scene)
+      pos.setZ(i, depth);
+
+      // Color mapping according to local spacetime curvature / gradient
+      const curvatureIntensity = Math.min(Math.abs(depth) / 3.0, 1.0);
+      let vertexColor;
+      if (curvatureIntensity < 0.25) {
+        vertexColor = cFlat.clone().lerp(cMid, curvatureIntensity / 0.25);
+      } else if (curvatureIntensity < 0.7) {
+        vertexColor = cMid.clone().lerp(cSaddle, (curvatureIntensity - 0.25) / 0.45);
+      } else {
+        vertexColor = cSaddle.clone().lerp(cWell, (curvatureIntensity - 0.7) / 0.3);
+      }
+
+      colArray[i * 3] = vertexColor.r;
+      colArray[i * 3 + 1] = vertexColor.g;
+      colArray[i * 3 + 2] = vertexColor.b;
     }
+
+    geom.setAttribute('color', new THREE.BufferAttribute(colArray, 3));
     geom.computeVertexNormals();
-    return geom;
-  }, [system.mu, targetCj]);
+    return { geometry: geom };
+  }, [mu]);
 
   return (
-    <mesh geometry={meshData}>
-      <meshStandardMaterial
-        color="#1e1b4b"
-        wireframe={true}
-        transparent={true}
-        opacity={0.12}
-      />
-    </mesh>
+    <group position={[0, 0, -0.2]}>
+      {/* Curved Spacetime Surface with Depth Shading */}
+      <mesh ref={meshRef} geometry={geometry}>
+        <meshStandardMaterial
+          vertexColors={true}
+          roughness={0.4}
+          metalness={0.3}
+          wireframe={false}
+          transparent={true}
+          opacity={0.82}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Luminous Coordinate Grid Overlay showing tensor line deformation */}
+      <mesh geometry={geometry} position={[0, 0, 0.005]}>
+        <meshBasicMaterial
+          color="#38bdf8"
+          wireframe={true}
+          transparent={true}
+          opacity={0.22}
+        />
+      </mesh>
+    </group>
   );
 }
 
-function LagrangeMarker({ position, label, color = '#eab308' }) {
+function LagrangeMarker({ position, label, color = '#facc15' }) {
   return (
     <group position={[position[0] * 5, position[1] * 5, position[2] * 5]}>
       <mesh>
@@ -55,7 +104,6 @@ function LagrangeMarker({ position, label, color = '#eab308' }) {
   );
 }
 
-// Enhanced High-Visibility Manifold Filaments
 function ManifoldFilaments({ filaments, color }) {
   if (!filaments || filaments.length === 0) return null;
   return (
@@ -68,9 +116,9 @@ function ManifoldFilaments({ filaments, color }) {
             key={idx}
             points={pts}
             color={color}
-            lineWidth={1.7}
+            lineWidth={1.8}
             transparent={true}
-            opacity={0.78}
+            opacity={0.8}
           />
         );
       })}
@@ -99,30 +147,30 @@ export default function SynodicViewport({
 
   return (
     <div style={{ width: '100%', height: '100%', backgroundColor: '#020617' }}>
-      <Canvas camera={{ position: [2.5, -7.5, 6], fov: 45 }}>
+      <Canvas camera={{ position: [2.5, -8.5, 7.5], fov: 45 }}>
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
 
-        {/* Textured Earth, Clouds, Moon & Starfield */}
+        {/* Textured Earth, Drifting Clouds, Moon & Starfield */}
         <CelestialBodies system={system} />
 
-        {/* Zero-Velocity Surfaces */}
-        <ZeroVelocitySurfaces system={system} targetCj={selectedCj} />
+        {/* BENT SPACETIME METRIC SHEET (Gravitational Wells + Saddle Necks) */}
+        <SpacetimeCurvatureGrid system={system} />
 
-        {/* Poincaré Section Plane (y = 0) */}
+        {/* Poincaré Section Visual Cutting Plane (y = 0) */}
         {showPoincarePlane && (
           <mesh rotation={[Math.PI / 2, 0, 0]} position={[2.5, 0, 0]}>
             <planeGeometry args={[14, 6]} />
             <meshBasicMaterial
               color="#38bdf8"
               transparent={true}
-              opacity={0.05}
+              opacity={0.04}
               side={THREE.DoubleSide}
               depthWrite={false}
             />
           </mesh>
         )}
 
-        {/* Lagrange Libration Points */}
+        {/* Lagrange Points */}
         {lagrangePoints && (
           <>
             <LagrangeMarker position={[lagrangePoints.L1.x, lagrangePoints.L1.y, 0]} label="L1" color="#facc15" />
@@ -133,7 +181,7 @@ export default function SynodicViewport({
           </>
         )}
 
-        {/* Corrected Periodic Halo Orbit */}
+        {/* Corrected Periodic Orbit */}
         {haloPoints && (
           <Line
             points={haloPoints}
@@ -142,7 +190,7 @@ export default function SynodicViewport({
           />
         )}
 
-        {/* High-Luminance Manifold Tubes (Unstable W^u: Rose Red | Stable W^s: Electric Cyan) */}
+        {/* Invariant Manifold Tubes */}
         {manifoldTubes && (
           <>
             <ManifoldFilaments filaments={manifoldTubes.unstableTube} color="#fb7185" />
@@ -150,10 +198,9 @@ export default function SynodicViewport({
           </>
         )}
 
-        {/* High-Intensity Spacecraft Trajectory Trail with Optical Bloom Sheath */}
+        {/* Spacecraft Trajectory Trail with Optical Glow */}
         {trajectoryPoints && (
           <>
-            {/* Outer Diffusion Glow Sheath */}
             <Line
               points={trajectoryPoints}
               color="#4ade80"
@@ -161,7 +208,6 @@ export default function SynodicViewport({
               transparent={true}
               opacity={0.35}
             />
-            {/* Inner High-Intensity Laser Core */}
             <Line
               points={trajectoryPoints}
               color="#86efac"
